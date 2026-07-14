@@ -10,7 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
-from config import PITCHER_PROFILES, BATTERS, ZONE_WEIGHTS, ALL_ZONES, ZONE_LOW
+from config import PITCHER_PROFILES, BATTERS, ZONE_WEIGHTS, ALL_ZONES, ZONE_LOW, INACTIVE_BY_SEASON
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -41,6 +41,10 @@ def _gen_season(year: int) -> pd.DataFrame:
     start = pd.Timestamp(f"{year}-04-01")
     end   = pd.Timestamp(f"{year}-{end_mo:02d}-{end_dy:02d}")
 
+    # Wykluczamy zawieszonych / nieaktywnych graczy
+    inactive   = INACTIVE_BY_SEASON.get(year, set())
+    active_bats = [b for b in BATTERS if b not in inactive]
+
     rows: list[dict] = []
     pitchers = list(PITCHER_PROFILES.keys())
 
@@ -54,7 +58,7 @@ def _gen_season(year: int) -> pd.DataFrame:
         for pitcher in pitchers:
             prof = PITCHER_PROFILES[pitcher]
             nb   = rng.integers(5, 12)
-            bats = rng.choice(BATTERS, size=min(nb, len(BATTERS)), replace=False)
+            bats = rng.choice(active_bats, size=min(nb, len(active_bats)), replace=False)
 
             for batter in bats:
                 n_p       = int(rng.integers(10, 38))

@@ -23,32 +23,55 @@ from config import (
 #  PLOTLY THEME HELPERS  (bez xaxis w update_layout → brak TypeError)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def themed(fig: go.Figure, **layout_kw: Any) -> go.Figure:
-    """
-    Aplikuje ciemny motyw.
-    Zasady bezpiecznego update_layout:
-      • xaxis/yaxis NIGDY w update_layout → update_xaxes/update_yaxes
-      • legend: merge LEGEND_DEFAULT z nadpisaniem z layout_kw (brak TypeError)
-    """
-    # Merge legend: default + caller override
-    caller_legend = layout_kw.pop("legend", {})
-    merged_legend = {**LEGEND_DEFAULT, **caller_legend}
+# Klucze dict w PLOTLY_BASE – wszystkie wymagają merge zamiast nadpisania
+_BASE_DICT_KEYS = {"font", "margin", "hoverlabel"}
 
-    fig.update_layout(**PLOTLY_BASE, legend=merged_legend, **layout_kw)
-    fig.update_xaxes(**AXIS_STYLE)
+
+def _apply_theme(fig: go.Figure, layout_kw: dict, x_angle: int | None = None) -> go.Figure:
+    """
+    Wewnętrzna funkcja aplikująca motyw.
+    Bezpiecznie merguje WSZYSTKIE dict-type klucze z PLOTLY_BASE:
+      font, margin, hoverlabel → merge zamiast TypeError
+      legend                   → merge z LEGEND_DEFAULT
+      xaxis / yaxis            → NIGDY w update_layout, zawsze update_xaxes/yaxes
+    """
+    base = dict(PLOTLY_BASE)
+
+    # 1. Merge legend
+    caller_legend  = layout_kw.pop("legend", {})
+    base["legend"] = {**LEGEND_DEFAULT, **caller_legend}
+
+    # 2. Merge pozostałych dict-type keys (margin, font, hoverlabel)
+    for key in _BASE_DICT_KEYS:
+        if key in layout_kw:
+            base[key] = {**base.get(key, {}), **layout_kw.pop(key)}
+
+    # 3. Upewnij się że title_font jest widoczny
+    if "title" in layout_kw and isinstance(layout_kw["title"], str):
+        layout_kw["title"] = dict(
+            text=layout_kw["title"],
+            font=dict(color="#e6edf3", size=13),
+            x=0, xanchor="left",
+        )
+
+    fig.update_layout(**base, **layout_kw)
+
+    ax = {**AXIS_STYLE}
+    if x_angle is not None:
+        ax["tickangle"] = x_angle
+    fig.update_xaxes(**ax)
     fig.update_yaxes(**AXIS_STYLE)
     return fig
+
+
+def themed(fig: go.Figure, **layout_kw: Any) -> go.Figure:
+    """Aplikuje ciemny motyw bez konfliktu kluczy."""
+    return _apply_theme(fig, layout_kw)
 
 
 def themed_rot(fig: go.Figure, angle: int = -30, **layout_kw: Any) -> go.Figure:
     """Motyw + obrót etykiet X."""
-    caller_legend = layout_kw.pop("legend", {})
-    merged_legend = {**LEGEND_DEFAULT, **caller_legend}
-
-    fig.update_layout(**PLOTLY_BASE, legend=merged_legend, **layout_kw)
-    fig.update_xaxes(**AXIS_STYLE, tickangle=angle)
-    fig.update_yaxes(**AXIS_STYLE)
-    return fig
+    return _apply_theme(fig, layout_kw, x_angle=angle)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -215,7 +238,6 @@ def export_csv(df: pd.DataFrame, filename: str, label: str = "⬇ CSV") -> None:
 def chart_batter_trend(bw: pd.DataFrame, batter: str) -> go.Figure:
     """
     Line chart: FB%/BB%/OS%/Z79% per week dla jednego battera.
-    To jest GŁÓWNA odpowiedź na pytanie użytkownika.
     """
     sub = bw[bw["batter_name"] == batter].sort_values("week_start")
 
@@ -229,28 +251,34 @@ def chart_batter_trend(bw: pd.DataFrame, batter: str) -> go.Figure:
             x=sub["week_label_short"],
             y=sub[col],
             mode="lines+markers",
-            name=f"{label}",
-            line=dict(color=color, width=2.8),
+            name=label,
+            line=dict(color=color, width=2.5),
             marker=dict(size=7, color=color,
                         line=dict(color="#0d1117", width=1.5)),
-            customdata=sub[["week_label", col, "total"]].values,
+            customdata=sub[["week_label", "total"]].values,
             hovertemplate=(
                 f"<b>{full}</b><br>"
                 "Tydzień: %{customdata[0]}<br>"
-                "%: <b>%{y:.1f}%</b><br>"
-                "Pitchy do battera: %{customdata[2]}<extra></extra>"
+                "<b>%{y:.1f}%</b> pitchy do battera<br>"
+                "Łącznie pitchy: %{customdata[1]}"
+                "<extra></extra>"
             ),
         ))
 
-    themed(fig,
-           height=360,
-           title=f"Tygodniowy pitch mix rzucony do: <b>{batter}</b>",
-           xaxis_title="Tydzień",
-           yaxis_title="Udział (%)",
-           hovermode="x unified",
-           legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0))
-    fig.update_yaxes(range=[0, 95])
-    return fig
+    return themed(
+        fig,
+        height=380,
+        title=f"Tygodniowy mix rzucony do: {batter}",
+        xaxis_title="Tydzień",
+        yaxis_title="Udział (%)",
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.04,
+            xanchor="left", x=0,
+            font=dict(size=11, color="#c9d1d9"),
+        ),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -258,21 +286,19 @@ def chart_batter_trend(bw: pd.DataFrame, batter: str) -> go.Figure:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def chart_batter_delta_bars(bd: pd.DataFrame, batter: str) -> go.Figure:
-    """
-    Grouped bar chart: zmiana każdej kategorii tydzień do tygodnia.
-    """
+    """Grouped bar chart: zmiana każdej kategorii tydzień do tygodnia."""
     sub = bd[bd["batter_name"] == batter].sort_values("week_start")
     if sub.empty:
         return go.Figure()
 
     fig = go.Figure()
-    d_cols = {
-        "d_fb":  ("FB%",   CAT_COLORS["fb_pct"]),
-        "d_bb":  ("BB%",   CAT_COLORS["bb_pct"]),
-        "d_os":  ("OS%",   CAT_COLORS["os_pct"]),
-        "d_z79": ("Z79%",  CAT_COLORS["z79_pct"]),
+    d_map = {
+        "d_fb":  ("FB%",  CAT_COLORS["fb_pct"]),
+        "d_bb":  ("BB%",  CAT_COLORS["bb_pct"]),
+        "d_os":  ("OS%",  CAT_COLORS["os_pct"]),
+        "d_z79": ("Z79%", CAT_COLORS["z79_pct"]),
     }
-    for col, (lbl, color) in d_cols.items():
+    for col, (lbl, color) in d_map.items():
         if col not in sub.columns:
             continue
         fig.add_trace(go.Bar(
@@ -281,26 +307,24 @@ def chart_batter_delta_bars(bd: pd.DataFrame, batter: str) -> go.Figure:
             y=sub[col],
             marker_color=color,
             opacity=0.85,
-            customdata=np.stack([
-                sub[col.replace("d_", "") + "_pct"].round(1) if col.replace("d_", "") + "_pct" in sub.columns
-                    else sub[col],
-                sub["total"],
-            ], axis=-1),
             hovertemplate=(
                 f"<b>{lbl} Δ</b><br>"
-                "Zmiana: <b>%{y:+.1f} pp</b><br>"
-                "Pitchy: %{customdata[1]}<extra></extra>"
+                "Tydzień: %{x}<br>"
+                "Zmiana: <b>%{y:+.1f} pp</b>"
+                "<extra></extra>"
             ),
         ))
 
-    themed(fig,
-           height=300,
-           barmode="group",
-           title=f"Zmiany tydzień-do-tygodnia · {batter}",
-           xaxis_title="Tydzień",
-           yaxis_title="Δ (pp)")
-    fig.update_yaxes(zeroline=True, zerolinecolor="#30363d", zerolinewidth=1)
-    return fig
+    return themed(
+        fig,
+        height=300,
+        barmode="group",
+        title=f"Zmiany tydzień-do-tygodnia · {batter}",
+        xaxis_title="Tydzień",
+        yaxis_title="Δ (pp)",
+        bargap=0.15,
+        bargroupgap=0.05,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -360,10 +384,10 @@ def chart_adj_score_ranking(bd: pd.DataFrame, top_n: int = 15) -> go.Figure:
           .tail(top_n)
           .reset_index()
     )
+    q75 = rank["adj_score"].quantile(0.75)
+    q50 = rank["adj_score"].quantile(0.50)
     colors = [
-        "#ff6b35" if v >= rank["adj_score"].quantile(0.75) else
-        "#ffd166" if v >= rank["adj_score"].quantile(0.5) else
-        "#4cc9f0"
+        "#ff6b35" if v >= q75 else "#ffd166" if v >= q50 else "#4cc9f0"
         for v in rank["adj_score"]
     ]
     fig = go.Figure(go.Bar(
@@ -372,15 +396,20 @@ def chart_adj_score_ranking(bd: pd.DataFrame, top_n: int = 15) -> go.Figure:
         orientation="h",
         marker_color=colors,
         text=rank["adj_score"].round(1),
+        texttemplate="  %{text:.1f}",
         textposition="outside",
+        cliponaxis=False,
+        textfont=dict(color="#c9d1d9", size=11),
         hovertemplate="<b>%{y}</b><br>Adj. Score: %{x:.1f}<extra></extra>",
     ))
-    themed(fig,
-           height=max(320, top_n * 28),
-           title="Ranking: Adjustment Score (im wyżej, tym więcej pitcherzy się dostosowało)",
-           xaxis_title="Adjustment Score",
-           yaxis_title="")
-    return fig
+    return themed(
+        fig,
+        height=max(340, top_n * 30),
+        title="Ranking: Adjustment Score",
+        xaxis_title="Adjustment Score",
+        yaxis_title="",
+        margin=dict(r=80),   # miejsce na etykiety
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -499,18 +528,21 @@ def chart_matchup_heatmap(mw: pd.DataFrame, pitcher: str, batter: str) -> go.Fig
 # ─────────────────────────────────────────────────────────────────────────────
 
 def chart_biggest_changes(md: pd.DataFrame, top_n: int = 20) -> go.Figure:
+    if md.empty:
+        return go.Figure()
     bar = md.head(top_n).copy()
-    bar["label"]  = bar["Pitcher"] + " → " + bar["Batter"]
-    bar["color"]  = bar["Δ pp"].apply(lambda x: "#39d353" if x > 0 else "#f85149")
+    bar["label"] = bar["Pitcher"] + " → " + bar["Batter"]
+    bar["color"] = bar["Δ pp"].apply(lambda x: "#39d353" if x > 0 else "#f85149")
 
     fig = go.Figure(go.Bar(
         x=bar["Δ pp"],
         y=bar["label"],
         orientation="h",
         marker_color=bar["color"],
-        text=bar.apply(
-            lambda r: f"{r['Pitch Name']} {r['Δ pp']:+.1f}pp", axis=1),
+        text=bar.apply(lambda r: f"{r['Pitch Name']} {r['Δ pp']:+.1f}pp", axis=1),
         textposition="outside",
+        cliponaxis=False,
+        textfont=dict(color="#c9d1d9", size=10),
         customdata=np.stack([
             bar["Pitch Name"], bar["Now %"], bar["Prev %"],
             bar["Pitches"], bar["Week"].str.split("\n").str[0],
@@ -520,13 +552,15 @@ def chart_biggest_changes(md: pd.DataFrame, top_n: int = 20) -> go.Figure:
             "Pitch: %{customdata[0]}<br>"
             "Teraz: %{customdata[1]:.1f}% · Poprzednio: %{customdata[2]:.1f}%<br>"
             "Δ: <b>%{x:+.1f} pp</b><br>"
-            "Pitchy: %{customdata[3]}<br>"
-            "Tydzień: %{customdata[4]}<extra></extra>"
+            "Pitchy: %{customdata[3]} · Tydzień: %{customdata[4]}"
+            "<extra></extra>"
         ),
     ))
-    themed(fig,
-           height=max(400, top_n * 26),
-           title=f"Top {top_n} zmian pitch mix (pitcher→batter level)",
-           xaxis_title="Δ (pp)", yaxis_title="")
-    fig.update_xaxes(zeroline=True, zerolinecolor="#30363d")
-    return fig
+    return themed(
+        fig,
+        height=max(420, top_n * 27),
+        title=f"Top {top_n} zmian pitch mix (pitcher → batter)",
+        xaxis_title="Δ (pp)",
+        yaxis_title="",
+        margin=dict(r=160),
+    )

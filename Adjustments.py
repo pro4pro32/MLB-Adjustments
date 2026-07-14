@@ -624,14 +624,17 @@ with tab_ranking:
                     orientation="h",
                     marker_color=color,
                     text=cat_rank[f"Max |Δ| {label}"].round(1),
-                    texttemplate="%{text:.1f} pp",
+                    texttemplate="  %{text:.1f}",
                     textposition="outside",
+                    cliponaxis=False,
+                    textfont=dict(color="#c9d1d9", size=10),
                 ))
                 themed(fig_cr,
                        height=320,
                        title=f"Top {label}",
-                       xaxis_title="pp", yaxis_title="",
-                       margin=dict(l=10, r=30, t=40, b=10))
+                       xaxis_title="pp",
+                       yaxis_title="",
+                       margin=dict(l=10, r=60, t=40, b=10))
                 fig_cr.update_yaxes(autorange="reversed")
                 st.plotly_chart(fig_cr, use_container_width=True)
 

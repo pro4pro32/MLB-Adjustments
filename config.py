@@ -80,6 +80,7 @@ PITCHER_PROFILES: dict[str, dict] = {
 }
 
 BATTERS: list[str] = [
+    # Aktywni gracze 2024-2026
     "Freddie Freeman", "Mookie Betts", "Ronald Acuna Jr.", "Corey Seager",
     "Trea Turner", "Jose Ramirez", "Yordan Alvarez", "Kyle Tucker",
     "Juan Soto", "Pete Alonso", "Michael Harris II", "Austin Riley",
@@ -88,8 +89,16 @@ BATTERS: list[str] = [
     "Gunnar Henderson", "Adley Rutschman", "Julio Rodriguez",
     "Steven Kwan", "Elly De La Cruz", "Jackson Merrill",
     "Jackson Chourio", "Francisco Lindor", "Bryce Harper",
-    "Wander Franco", "Cody Bellinger", "Teoscar Hernandez",
+    "CJ Abrams", "Spencer Torkelson", "Adolis Garcia",
 ]
+
+# Gracze nieaktywni (zawieszeni, kontuzja długoterminowa, emerytura) per sezon
+# Klucz = rok, wartość = set nazwisk do wykluczenia z generatora
+INACTIVE_BY_SEASON: dict[int, set[str]] = {
+    2024: {"Wander Franco"},            # zawieszony bezterminowo od VIII 2023
+    2025: {"Wander Franco"},
+    2026: {"Wander Franco"},
+}
 
 AVAILABLE_SEASONS: list[int] = [2022, 2023, 2024, 2025, 2026]
 
@@ -97,8 +106,8 @@ AVAILABLE_SEASONS: list[int] = [2022, 2023, 2024, 2025, 2026]
 PLOTLY_BASE: dict = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="Inter, sans-serif", color="#e6edf3", size=12),
-    margin=dict(l=16, r=16, t=44, b=16),
+    font=dict(family="Inter, sans-serif", color="#c9d1d9", size=12),
+    margin=dict(l=20, r=20, t=48, b=20),
     hoverlabel=dict(
         bgcolor="#161b22",
         bordercolor="#30363d",
@@ -117,9 +126,10 @@ LEGEND_DEFAULT: dict = dict(
 AXIS_STYLE: dict = dict(
     gridcolor="#21262d",
     linecolor="#30363d",
-    tickfont=dict(size=11, color="#7d8590"),
-    title_font=dict(size=12, color="#7d8590"),
+    tickfont=dict(size=11, color="#c9d1d9"),
+    title_font=dict(size=12, color="#c9d1d9"),
     zeroline=False,
+    automargin=True,        # prevents label clipping
 )
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
